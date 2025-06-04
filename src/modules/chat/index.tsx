@@ -8,11 +8,94 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 import { useChatList, useChatStream, useClearChat } from '@/hooks/chat/useChat';
 import { cn } from '@/lib/utils';
-import { Loader2, MessageSquare, Send, Trash2 } from 'lucide-react';
+import {
+  Loader2,
+  MessageSquare,
+  Send,
+  Trash2,
+  Settings,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+} from 'lucide-react';
 import ChatContent from './chat-content';
 import { useEffect, useRef } from 'react';
+
+// Component untuk menampilkan tool calls
+interface ToolCall {
+  id: string;
+  name: string;
+  status: 'running' | 'completed' | 'error';
+  arguments: any;
+  result?: any;
+}
+
+interface ToolCallDisplayProps {
+  toolCall: ToolCall;
+}
+
+const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
+  const getStatusIcon = () => {
+    switch (toolCall.status) {
+      case 'running':
+        return <Clock className="w-3 h-3 text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="w-3 h-3 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="w-3 h-3 text-red-500" />;
+      default:
+        return <Settings className="w-3 h-3 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (toolCall.status) {
+      case 'running':
+        return 'border-blue-200 bg-blue-50';
+      case 'completed':
+        return 'border-green-200 bg-green-50';
+      case 'error':
+        return 'border-red-200 bg-red-50';
+      default:
+        return 'border-gray-200 bg-gray-50';
+    }
+  };
+
+  return (
+    <div className={`mt-2 p-2 border rounded-md text-xs ${getStatusColor()}`}>
+      <div className="flex items-center gap-2 mb-1">
+        {getStatusIcon()}
+        <span className="font-medium">Tool: {toolCall.name}</span>
+        <Badge variant="outline" className="text-[10px] px-1 py-0">
+          {toolCall.status}
+        </Badge>
+      </div>
+
+      {Object.keys(toolCall.arguments).length > 0 && (
+        <div className="mb-1">
+          <div className="font-medium mb-1">Arguments:</div>
+          <pre className="text-[10px] bg-white bg-opacity-70 p-1 rounded border overflow-x-auto">
+            {JSON.stringify(toolCall.arguments, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      {toolCall.result && (
+        <div>
+          <div className="font-medium mb-1">Result:</div>
+          <div className="text-[10px] bg-white bg-opacity-70 p-1 rounded border max-h-20 overflow-y-auto">
+            {typeof toolCall.result === 'string'
+              ? toolCall.result
+              : JSON.stringify(toolCall.result, null, 2)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 function Chat() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -24,6 +107,7 @@ function Chat() {
     streamingMessage,
     isStreaming,
     error,
+    toolCalls, // <- Tool calls dari hook baru
     handleSendMessage,
   } = useChatStream();
   const { mutate: clearChat, isPending: isClearChatPending } = useClearChat();
@@ -34,7 +118,7 @@ function Chat() {
       chatContainerRef.current.scrollTop =
         chatContainerRef.current.scrollHeight;
     }
-  }, [messages?.data, streamingMessage]);
+  }, [messages?.data, streamingMessage, toolCalls]);
 
   return (
     <Card className="border-none shadow-none h-full flex flex-col py-4">
@@ -95,26 +179,55 @@ function Chat() {
                     : 'bg-muted'
                 )}
               >
-                <ChatContent chat={message} />
+                <ChatContent
+                  chat={message}
+                  isAssistant={message.type === 'assistant'}
+                />
               </div>
             ))}
+
+            {/* Streaming message dengan tool calls */}
             {isStreaming && (
               <div
                 className={cn(
                   'flex w-max max-w-[75%] flex-col gap-2 rounded-lg px-3 py-2 text-sm bg-muted'
                 )}
               >
-                {streamingMessage}
-                <div className="flex gap-1 mt-1">
-                  <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
-                </div>
+                {/* Streaming text content */}
+                {streamingMessage && <div>{streamingMessage}</div>}
+
+                {/* Tool calls display */}
+                {toolCalls.length > 0 && (
+                  <div className="space-y-1">
+                    {toolCalls.map((toolCall) => (
+                      <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Loading indicator - hanya tampil jika ada streaming atau tool calls aktif */}
+                {(isStreaming ||
+                  toolCalls.some((t) => t.status === 'running')) && (
+                  <div className="flex gap-1 mt-1">
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 rounded-full bg-gray-400 animate-bounce"></div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
-        {error && <div className="text-red-500 text-xs mt-2">{error}</div>}
+
+        {/* Error display */}
+        {error && (
+          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+            <div className="flex items-center gap-2 text-red-700 text-xs">
+              <AlertCircle className="w-3 h-3" />
+              <span>{error}</span>
+            </div>
+          </div>
+        )}
       </CardContent>
       <CardFooter className="flex-shrink-0">
         <form
