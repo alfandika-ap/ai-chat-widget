@@ -115,7 +115,7 @@ export const useChatStream = () => {
     });
 
     try {
-      const response = await fetch("http://localhost:8000/agent-chat/stream", {
+      const response = await fetch("http://localhost:8000/api/v1/chat/stream", {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
